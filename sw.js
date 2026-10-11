@@ -1,17 +1,10 @@
-/* HOKEJ ZZS – offline cache with online-first updates (v2) */
-const CACHE = 'hokej-zzs-v2';
+/* HOKEJ ZZS – aktualizace PWA v3: online-first HTML, offline fallback */
+const CACHE = 'hokej-zzs-v3-20261011';
 const ASSETS = [
-  './',
-  './index.html',
-  './hokej-hero.jpg',
-  './hokej-banner.jpg',
-  './hokej-banner-mobil.jpg',
-  './icon-192.png',
-  './icon-512.png',
-  './apple-touch-icon.png',
-  './manifest.webmanifest'
+  './index.html', './hokej-hero.jpg', './hokej-banner.jpg',
+  './hokej-banner-mobil.jpg', './icon-192.png', './icon-512.png',
+  './apple-touch-icon.png', './manifest.webmanifest'
 ];
-
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE);
@@ -22,50 +15,41 @@ self.addEventListener('install', event => {
     await self.skipWaiting();
   })());
 });
-
 self.addEventListener('activate', event => {
   event.waitUntil((async () => {
     const keys = await caches.keys();
-    await Promise.all(keys.filter(key => key.startsWith('hokej-zzs-') && key !== CACHE).map(key => caches.delete(key)));
+    await Promise.all(keys.filter(k => k.startsWith('hokej-zzs-') && k !== CACHE).map(k => caches.delete(k)));
     await self.clients.claim();
   })());
 });
-
 self.addEventListener('fetch', event => {
-  const request = event.request;
-  if (request.method !== 'GET') return;
-  const url = new URL(request.url);
+  const req = event.request;
+  if (req.method !== 'GET') return;
+  const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
-
-  // HTML: always try the server first; cached copy only if offline.
-  if (request.mode === 'navigate' || url.pathname.endsWith('/index.html')) {
+  if (req.mode === 'navigate' || url.pathname.endsWith('/index.html')) {
     event.respondWith((async () => {
       try {
-        const response = await fetch(request, {cache: 'no-store'});
+        const response = await fetch(req, {cache: 'no-store'});
         if (response.ok) {
           const cache = await caches.open(CACHE);
-          await cache.put(request, response.clone());
+          await cache.put('./index.html', response.clone());
         }
         return response;
-      } catch (error) {
+      } catch (_) {
         const cache = await caches.open(CACHE);
-        return (await cache.match(request)) || (await cache.match('./index.html')) || Response.error();
+        return await cache.match('./index.html') || Response.error();
       }
     })());
     return;
   }
-
-  // Other assets: fresh from network when online, cached fallback offline.
   event.respondWith((async () => {
     try {
-      const response = await fetch(request);
-      if (response.ok) {
-        const cache = await caches.open(CACHE);
-        await cache.put(request, response.clone());
-      }
+      const response = await fetch(req);
+      if (response.ok) (await caches.open(CACHE)).put(req, response.clone());
       return response;
-    } catch (error) {
-      return (await caches.match(request)) || Response.error();
+    } catch (_) {
+      return await caches.match(req) || Response.error();
     }
   })());
 });
